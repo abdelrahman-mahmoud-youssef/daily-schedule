@@ -1,0 +1,371 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>جدولي</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#14151A;
+    --surface:#1D1F26;
+    --surface-2:#23252D;
+    --text:#EDEDEC;
+    --text-muted:#8B8D97;
+    --accent:#E8A33D;
+    --accent-soft:rgba(232,163,61,0.14);
+    --border:#2A2C35;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:var(--bg);
+    color:var(--text);
+    font-family:'Cairo',system-ui,sans-serif;
+    min-height:100vh;
+    display:flex;
+    justify-content:center;
+    padding:28px 16px 60px;
+  }
+  .app{
+    width:100%;
+    max-width:440px;
+    animation:rise .5s ease-out;
+  }
+  @media (prefers-reduced-motion: reduce){
+    .app{animation:none;}
+  }
+  @keyframes rise{
+    from{opacity:0; transform:translateY(10px);}
+    to{opacity:1; transform:translateY(0);}
+  }
+  header{margin-bottom:22px;}
+  .day-name{
+    font-size:30px;
+    font-weight:800;
+    margin:0 0 4px;
+  }
+  .date-label{
+    color:var(--text-muted);
+    font-size:14px;
+    font-weight:500;
+  }
+  .tag{
+    display:inline-block;
+    margin-top:10px;
+    padding:5px 12px;
+    border-radius:8px;
+    background:var(--accent-soft);
+    color:var(--accent);
+    font-size:13px;
+    font-weight:600;
+  }
+  .timeline{
+    position:relative;
+    padding-inline-start:18px;
+    border-inline-start:2px solid var(--border);
+  }
+  .row{
+    position:relative;
+    padding:12px 0 12px 4px;
+    border-bottom:1px solid var(--border);
+  }
+  .row:last-child{border-bottom:none;}
+  .row::before{
+    content:'';
+    position:absolute;
+    inset-inline-start:-23px;
+    top:18px;
+    width:8px;
+    height:8px;
+    border-radius:50%;
+    background:var(--border);
+  }
+  .row.active::before{
+    background:var(--accent);
+    box-shadow:0 0 0 4px var(--accent-soft);
+  }
+  .row.active{
+    background:var(--accent-soft);
+    margin-inline-start:-14px;
+    padding-inline-start:14px;
+    border-radius:10px;
+  }
+  .time{
+    display:block;
+    unicode-bidi:isolate;
+    direction:ltr;
+    text-align:right;
+    color:var(--text-muted);
+    font-size:13px;
+    font-weight:600;
+    margin-bottom:2px;
+  }
+  .row.active .time{color:var(--accent);}
+  .label{
+    font-size:15.5px;
+    font-weight:500;
+    line-height:1.5;
+  }
+  .note-card{
+    margin-top:26px;
+    background:var(--surface);
+    border:1px solid var(--border);
+    border-radius:12px;
+    padding:16px;
+  }
+  .note-card h2{
+    font-size:15px;
+    font-weight:700;
+    margin:0 0 10px;
+  }
+  textarea{
+    width:100%;
+    min-height:64px;
+    background:var(--surface-2);
+    border:1px solid var(--border);
+    border-radius:8px;
+    color:var(--text);
+    font-family:inherit;
+    font-size:14px;
+    padding:10px;
+    resize:vertical;
+  }
+  textarea:focus, button:focus{
+    outline:2px solid var(--accent);
+    outline-offset:2px;
+  }
+  .note-actions{
+    display:flex;
+    align-items:center;
+    gap:10px;
+    margin-top:10px;
+  }
+  button{
+    background:var(--accent);
+    color:#1A1300;
+    border:none;
+    border-radius:8px;
+    padding:9px 18px;
+    font-family:inherit;
+    font-size:14px;
+    font-weight:700;
+    cursor:pointer;
+  }
+  button:disabled{opacity:.5; cursor:default;}
+  .status{
+    font-size:13px;
+    color:var(--text-muted);
+  }
+  .status.ok{color:#8FCB8F;}
+  .status.err{color:#E28B8B;}
+</style>
+</head>
+<body>
+<div class="app">
+
+  <header>
+    <h1 class="day-name" id="dayName"></h1>
+    <div class="date-label" id="dateLabel"></div>
+    <span class="tag" id="dayTag"></span>
+  </header>
+
+  <div class="timeline" id="scheduleList"></div>
+
+  <div class="note-card">
+    <h2>ملاحظة اليوم</h2>
+    <textarea id="noteInput" placeholder="مثلاً: هروح الجيم النهارده رغم إنه خميس"></textarea>
+    <div class="note-actions">
+      <button id="saveBtn">حفظ</button>
+      <span class="status" id="statusText"></span>
+    </div>
+  </div>
+
+</div>
+
+<script>
+/* ================= Xano config =================
+   Fill these in once you have your Xano workspace ready.
+   Expected endpoints on your Xano API group:
+   - GET  {XANO_BASE_URL}/day_override?date=YYYY-MM-DD
+       -> returns { date, note } if one exists, or 404/empty if not
+   - POST {XANO_BASE_URL}/day_override
+       body: { date, note, password }
+       -> Xano checks password server-side (Function stack) before
+          creating/updating the row, returns { success: true } or
+          { success:false, error:"wrong password" }
+================================================== */
+const XANO_BASE_URL = "https://x8ki-letl-twmt.n7.xano.io/api:CfCVZiDW";
+
+// ---------- weekly template (fixed) ----------
+// h,m = real clock start time of the block, used to place it on the timeline
+const OFF = [
+  {h:12,m:0, time:'12:00', text:'يوم إجازة من الشغل، عيش يومك من غير جدول ضاغط'},
+  {h:17,m:0, time:'5:00 - 11:00', text:'لو حابب تاخد الجيم، الوقت مفتوح قدامك'},
+];
+
+const WORK = [
+  {h:12,m:0,  time:'12:00',        text:'تصحى + الضهر'},
+  {h:12,m:1,  time:'12:00 - 3:30', text:'وقتك الحر'},
+  {h:15,m:30, time:'3:30',         text:'العصر'},
+  {h:15,m:31, time:'3:30 - 5:00',  text:'حر / اكل'},
+  {h:17,m:0,  time:'5:00 - 6:30',  text:'الجيم'},
+  {h:18,m:30, time:'6:30 - 7:00',  text:'المغرب + دش + اكل'},
+  {h:19,m:0,  time:'7:00 - 8:30',  text:'شغل - الفترة الأولى'},
+  {h:20,m:30, time:'8:30 - 9:15',  text:'مذاكرة انجليزي'},
+  {h:21,m:15, time:'9:15 - 9:30',  text:'العشا'},
+  {h:21,m:30, time:'9:30 - 11:00', text:'شغل - الفترة التانية'},
+  {h:23,m:0,  time:'11:00 - 11:45',text:'تعلم / كورس'},
+  {h:23,m:45, time:'11:45 - 1:30', text:'حر / راحة'},
+  {h:1,m:30,  time:'1:30 - 3:00',  text:'شغل - الفترة التالتة'},
+  {h:3,m:0,   time:'3:00',         text:'الفجر + نوم'},
+];
+
+const WORK_OUT = [ // Thursday
+  {h:12,m:0,  time:'12:00',        text:'تصحى + الضهر'},
+  {h:12,m:1,  time:'12:00 - 1:00', text:'حر'},
+  {h:13,m:0,  time:'1:00 - 2:30',  text:'شغل - الفترة الأولى'},
+  {h:14,m:30, time:'2:30 - 3:30',  text:'مذاكرة انجليزي'},
+  {h:15,m:30, time:'3:30',         text:'العصر'},
+  {h:15,m:31, time:'3:30 - 6:00',  text:'حر'},
+  {h:18,m:0,  time:'6:00 - 7:30',  text:'شغل - الفترة التانية'},
+  {h:19,m:30, time:'7:30 - 8:00',  text:'المغرب + بريك'},
+  {h:20,m:0,  time:'8:00 - 9:30',  text:'شغل - الفترة التالتة'},
+  {h:21,m:30, time:'9:30 - 11:00', text:'العشا + استعداد'},
+  {h:23,m:0,  time:'11:00 - 2:00', text:'خروجة مع الصحاب'},
+  {h:2,m:0,   time:'2:00',         text:'رجوع، الفجر، نوم'},
+];
+
+const FOOTBALL_OUT = [ // Friday
+  {h:10,m:30, time:'10:30 - 11:00', text:'تصحى واستعد'},
+  {h:12,m:0,  time:'12:00 - 1:30',  text:'جمعة + كورة'},
+  {h:13,m:30, time:'1:30 - 2:00',   text:'رجوع + راحة'},
+  {h:14,m:0,  time:'2:00 - 3:30',   text:'شغل - الفترة الأولى'},
+  {h:15,m:30, time:'3:30 - 4:00',   text:'العصر + بريك'},
+  {h:16,m:0,  time:'4:00 - 4:45',   text:'مذاكرة انجليزي'},
+  {h:16,m:45, time:'4:45 - 6:15',   text:'شغل - الفترة التانية'},
+  {h:18,m:15, time:'6:15 - 6:45',   text:'المغرب + بريك'},
+  {h:18,m:45, time:'6:45 - 8:15',   text:'شغل - الفترة التالتة'},
+  {h:20,m:15, time:'8:15 - 9:00',   text:'العشا + استعداد للخروج'},
+  {h:21,m:0,  time:'9:00',          text:'خروجة، وبعدها الحجز'},
+];
+
+// index 0 = Sunday ... 6 = Saturday, matching Date.getDay()
+const DAY_NAMES = ['الأحد','الاتنين','الثلاثاء','الأربعاء','الخميس','الجمعة','السبت'];
+const DAY_TAGS  = ['يوم إجازة','يوم شغل','يوم شغل','يوم شغل','شغل + خروجة','كورة + شغل + خروجة','يوم إجازة'];
+const TEMPLATES = [OFF, WORK, WORK, WORK, WORK_OUT, FOOTBALL_OUT, OFF];
+
+// ---------- day-boundary logic ----------
+// the "day" starts at 12:00 noon, not at midnight, since work can run past 3am
+function getAppDate(){
+  const now = new Date();
+  const d = new Date(now);
+  if(now.getHours() < 12) d.setDate(d.getDate() - 1);
+  d.setHours(0,0,0,0);
+  return d;
+}
+
+// minutes since this app-day's noon, for a given hour/minute
+function minutesFromNoon(h,m){
+  return ((h - 12 + 24) % 24) * 60 + m;
+}
+
+function formatDateForApi(d){
+  const y=d.getFullYear(), m=String(d.getMonth()+1).padStart(2,'0'), day=String(d.getDate()).padStart(2,'0');
+  return `${y}-${m}-${day}`;
+}
+
+// ---------- render ----------
+function render(){
+  const appDate = getAppDate();
+  const dow = appDate.getDay();
+  const blocks = TEMPLATES[dow];
+
+  document.getElementById('dayName').textContent = DAY_NAMES[dow];
+  document.getElementById('dayTag').textContent = DAY_TAGS[dow];
+  document.getElementById('dateLabel').textContent =
+    appDate.toLocaleDateString('ar-EG-u-nu-latn', {day:'numeric', month:'long', year:'numeric'});
+
+  const now = new Date();
+  const nowOffset = minutesFromNoon(now.getHours(), now.getMinutes());
+
+  const withOffsets = blocks.map(b => ({...b, start: minutesFromNoon(b.h,b.m)}));
+
+  const list = document.getElementById('scheduleList');
+  list.innerHTML = '';
+  withOffsets.forEach((b, i) => {
+    const next = withOffsets[i+1] ? withOffsets[i+1].start : 1440;
+    const isActive = nowOffset >= b.start && nowOffset < next;
+    const row = document.createElement('div');
+    row.className = 'row' + (isActive ? ' active' : '');
+    row.innerHTML = `<span class="time">${b.time}</span><span class="label">${b.text}</span>`;
+    list.appendChild(row);
+  });
+
+  loadNote(formatDateForApi(appDate));
+}
+
+// ---------- Xano: load / save today's note ----------
+async function loadNote(dateStr){
+  const input = document.getElementById('noteInput');
+  input.value = '';
+  if(!XANO_BASE_URL || XANO_BASE_URL.startsWith('PUT_YOUR')) return;
+  try{
+    const res = await fetch(`${XANO_BASE_URL}/day_override?date=${dateStr}`);
+    if(!res.ok) return;
+    const data = await res.json();
+    if(data && data.note) input.value = data.note;
+  }catch(e){
+    // silently ignore, page still works without Xano
+  }
+}
+
+async function saveNote(){
+  const dateStr = formatDateForApi(getAppDate());
+  const note = document.getElementById('noteInput').value.trim();
+  const statusEl = document.getElementById('statusText');
+  const btn = document.getElementById('saveBtn');
+
+  if(!XANO_BASE_URL || XANO_BASE_URL.startsWith('PUT_YOUR')){
+    statusEl.textContent = 'لسه لازم تظبط رابط الـ Xano في الكود';
+    statusEl.className = 'status err';
+    return;
+  }
+
+  const password = window.prompt('اكتب الباسورد عشان تحفظ:');
+  if(password === null) return;
+
+  btn.disabled = true;
+  statusEl.textContent = 'بيتحفظ...';
+  statusEl.className = 'status';
+
+  try{
+    const res = await fetch(`${XANO_BASE_URL}/day_override`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({date: dateStr, note, password})
+    });
+    const data = await res.json();
+    if(res.ok && data.success){
+      statusEl.textContent = 'اتحفظ';
+      statusEl.className = 'status ok';
+    }else{
+      statusEl.textContent = data.error || 'الباسورد غلط';
+      statusEl.className = 'status err';
+    }
+  }catch(e){
+    statusEl.textContent = 'في مشكلة في الاتصال';
+    statusEl.className = 'status err';
+  }finally{
+    btn.disabled = false;
+  }
+}
+
+document.getElementById('saveBtn').addEventListener('click', saveNote);
+render();
+setInterval(render, 60000); // refresh highlight every minute
+</script>
+</body>
+</html>
